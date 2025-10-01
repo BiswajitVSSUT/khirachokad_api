@@ -28,8 +28,9 @@ export const createProduct = async(req: Request, res: Response)=>{
         shop: { connect: { id: shopId } },
       }
     })
+    const qrcodeUrl = `https://khirachokada.com/verify/${verificationCode}`
     if(!product) return sendError(res,"Failed to create product",400);
-    sendSuccess(res,"Product created successfully",product,201);
+    sendSuccess(res,"Product created successfully",{product,qrcodeUrl},201);
 
 }
 
@@ -72,3 +73,33 @@ export const updateProduct = async(req: Request, res: Response)=>{
       sendSuccess(res, "Product updated successfully",updatedProduct,200);
 }
 
+
+
+export const verifyProduct = async(req: Request, res: Response)=>{
+  const {verificationCode} = req.params
+  if(!verificationCode?.trim()) return sendError(res,"All fields are required");
+  const product = await prisma.products.findMany({
+    where:{verificationId:verificationCode}
+  })
+  if(!product || product.length === 0) return sendError(res,"Fake product",404);
+  sendSuccess(res,"Verified product",200);
+}
+
+
+export const refreshProductQr = async(req: Request, res: Response)=>{
+  const {id} = req.body;
+
+  if(!id.trim() || id === undefined) return sendError(res,"All fields are required",400);
+  const newVerificationCode = crypto.randomUUID();
+  const updatedQr = await prisma.products.update({
+    where:{
+      id
+    },
+    data:{
+      verificationId:newVerificationCode
+    }
+  })
+  if(!updatedQr) return sendError(res,"Failed to update QR",400);
+  const newQrURL = `https://khirachokada.com/verify/${updatedQr.verificationId}`;
+  sendSuccess(res,"QR Code updated successfully",{updatedQr,newQrURL},200)
+}
