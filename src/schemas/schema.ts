@@ -21,3 +21,11 @@ export const productSchema = z.object({
   shopId: z.string(),
   expairyDate: z.coerce.date(),
 })
+
+export const reviewSchema = z.object({
+  revieweeName: z.string(),
+  revieweeEmail: z.string().email(),
+  review: z.string().min(5),
+  rating: z.number(),
+  shopId: z.string().uuid()
+})

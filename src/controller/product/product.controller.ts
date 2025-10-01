@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
-import z from "zod";
+
 import { PrismaClient } from "@prisma/client";
 import { sendError, sendSuccess } from "../../utils/response.js";
 const prisma = new PrismaClient();
 import crypto from "crypto"
+
 
 
 export const createProduct = async(req: Request, res: Response)=>{
@@ -37,3 +38,37 @@ export const getProducts = async(req: Request, res: Response)=>{
     if(!products || products.length === 0) return sendError(res,"Failed to get products",404);
     sendSuccess(res,"Products fetched",products,200);
 }
+
+
+export const updateProduct = async(req: Request, res: Response)=>{
+  const { name,
+      description,
+      price,
+      image ,
+      id,
+      expairyDate,
+      shopId} = req.body
+     
+      let updateData: any = {};
+      if(!id || !id.trim()) return sendError(res,"All fields are requireed",400)
+      if(description !== undefined && description.length!== "") updateData.description = description;
+      if(price !== undefined && price!== "") updateData.price = price;
+      if(image !== undefined && image!== "") updateData.image = image;
+      if(expairyDate !== undefined && expairyDate!== "") updateData.expairyDate = expairyDate;
+      if(shopId !== undefined && shopId!== "") updateData.shopId = shopId;
+       if(name !== undefined && name!== "") updateData.name = name;
+
+      if(Object.keys(updateData).length === 0) return sendError(res,"No data to update",400)
+   
+       const updatedProduct = await prisma.products.update({
+        where:{
+          id
+        },
+        data:updateData
+      })
+    
+   
+      if(!updatedProduct) return sendError(res,"Failed to update the product",400);
+      sendSuccess(res, "Product updated successfully",updatedProduct,200);
+}
+
