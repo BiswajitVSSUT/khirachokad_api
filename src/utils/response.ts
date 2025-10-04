@@ -22,6 +22,6 @@ export const sendError = (
   return res.status(statusCode).json({
     success: false,
     message,
-    error,
+    error : error ? error : undefined
   });
 };

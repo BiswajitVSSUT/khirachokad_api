@@ -38,7 +38,7 @@ CREATE TABLE "public"."products" (
     "adminId" TEXT NOT NULL,
     "shopId" TEXT NOT NULL,
     "verificationId" TEXT NOT NULL,
-    "expairyDate" TIMESTAMP(3) NOT NULL,
+    "expiryDate" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

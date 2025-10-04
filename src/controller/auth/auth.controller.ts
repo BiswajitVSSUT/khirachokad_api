@@ -10,7 +10,7 @@ import { sendSuccess, sendError } from "../../utils/response.js";
 export const signUp = async (req: Request, res: Response) => {
   const schema = z.object({
     name: z.string().min(3).max(60),
-    email: z.string().email(),
+    email: z.email(),
     password: z
       .string()
       .min(5)
@@ -18,7 +18,7 @@ export const signUp = async (req: Request, res: Response) => {
         message:
           "Password must include uppercase, lowercase, number, and special character",
       }),
-    avatar: z.string().url().optional(),
+    avatar: z.url().optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -49,7 +49,7 @@ export const signUp = async (req: Request, res: Response) => {
 
 export const signIn = async (req: Request, res: Response) => {
   const schema = z.object({
-    email: z.string().email(),
+    email: z.email(),
     password: z.string().min(5),
   });
 
