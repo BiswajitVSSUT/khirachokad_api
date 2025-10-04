@@ -85,7 +85,7 @@ export const verifyProduct = async (req: Request, res: Response) => {
   })
 
   const currentDate: Date = new Date()
-  if (!product || product.length === 0 || product[0]?.expiryDate! > currentDate) return sendError(res, "Duplicate Product Or Product Expired", null, 404);
+  if (!product || product.length === 0 || (product[0]?.expiryDate && product[0]?.expiryDate < currentDate)) return sendError(res, "Duplicate Product Or Product Expired", null, 404);
   sendSuccess(res, "Verified product", 200);
 }
 
