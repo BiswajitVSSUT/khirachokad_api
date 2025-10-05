@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const shopSchema = z.object({
+  userId : z.string(),
   name: z.string().min(4),
   description: z.string().min(10),
   logo: z.string().url(),

@@ -59,7 +59,7 @@ export const signIn = async (req: Request, res: Response) => {
   const { email, password } = parsed.data;
 
   const existingAdmin = await prisma.admin.findUnique({ where: { email } });
-  if (!existingAdmin) return sendError(res, "Admin not found", null, 404);
+  if (!existingAdmin) return sendError(res, "Admin not found", null, 401);
 
   const isPasswordValid = await bcrypt.compare(password, existingAdmin.password);
   if (!isPasswordValid) return sendError(res, "Invalid password", null, 401);
