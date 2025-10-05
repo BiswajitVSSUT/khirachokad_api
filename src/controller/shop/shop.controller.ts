@@ -6,16 +6,58 @@ const prisma = new PrismaClient();
 import { sendSuccess, sendError } from "../../utils/response.js";
 
 export const createShop = async (req: Request, res: Response) => {
-  const newShop = await prisma.shop.create({
-    data: req.body
-  });
-  if (!newShop) return sendError(res, "Failed to create shop", 400);
-  sendSuccess(res, "New shop created successfully", { newShop }, 201);
+  try {
+    const {
+      userId, 
+      name,
+      description,
+      logo,
+      contactNumber,
+      contactNumber2,
+      contactEmail,
+      postalCode,
+      blockName,
+      district
+    } = req.body;
+
+    // Validate required userId
+    if(!userId) return sendError(res , "userId is required" , null , 400)
+
+    const newShop = await prisma.shop.create({
+      data: {
+        name,
+        description,
+        logo,
+        contactNumber,
+        contactNumber2: contactNumber2 || null,
+        contactEmail,
+        postalCode: postalCode || null,
+        blockName: blockName || null,
+        district: district || null,
+        user: {
+          connect: { id : userId}
+        }
+      }
+    });
+
+    sendSuccess(res, "New shop created successfully", { newShop }, 201);
+  } catch (error: any) {
+    console.error('Create shop error:', error);
+    sendError(res, error.message || "Failed to create shop", null, 500);
+  }
 };
 
-export const getShop = async (req: Request, res: Response) => {
-  const shop = await prisma.shop.findMany({});
-  if (!shop) return sendError(res, "Failed to get shop",null, 404);
+export const getAllShop = async (req: Request, res: Response) => {
+  const { id } = req.params
+
+  if (!id) return sendError(res, "Id is required", null, 400)
+
+  const shop = await prisma.shop.findMany({
+    where: {
+      userId: id
+    }
+  });
+  if (!shop) return sendError(res, "Failed to get shop", null, 404);
   sendSuccess(res, "Shop fetched", shop, 200);
 };
 
@@ -58,18 +100,18 @@ export const updateShop = async (req: Request, res: Response) => {
 export const deleteShop = async (req: Request, res: Response) => {
   const { shopId } = req.params
 
-  if (!shopId) return sendError(res, "Shop ID is required",null, 400)
+  if (!shopId) return sendError(res, "Shop ID is required", null, 400)
 
   const existingShop = await prisma.shop.findUnique({
     where: { id: shopId }
   });
 
   if (!existingShop) {
-    return sendError(res, "Shop not found",null, 404);
+    return sendError(res, "Shop not found", null, 404);
   }
 
   const shop = await prisma.shop.delete({
-      where: { id: shopId }
-    });
+    where: { id: shopId }
+  });
   sendSuccess(res, "Shop deleted successfully", shop, 200);
 };
