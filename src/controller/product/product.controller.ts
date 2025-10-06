@@ -115,6 +115,9 @@ export const getProductsByShopId = async (req: Request, res: Response) => {
   const products = await prisma.products.findMany({
     where: {
       shopId
+    },
+    orderBy : {
+      updatedAt : 'desc'
     }
   })
 
