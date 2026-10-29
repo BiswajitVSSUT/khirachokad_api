@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: kc-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: KcDb_2026!
+      POSTGRES_DB: kc_db
+      # Explicit PGDATA keeps the volume layout stable (PG18 changed its default)
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      # host 5434 avoids clashing with an existing local Postgres on 5432
+      - "5432:5432"
+    volumes:
+      - kc_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d kc_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot service: applies Prisma migrations and seed SQL files
+  # every time the stack is started (safe to re-run).
+  migrate:
+    image: node:22-alpine
+    container_name: kc-db-migrate
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://user:KcDb_2026!@db:5432/kc_db?schema=public
+    volumes:
+      - .:/app
+      - npm_cache:/root/.npm
+    command: ["sh", "scripts/db-migrate.sh"]
+    restart: "no"
+
+volumes:
+  kc_db_data:
+  npm_cache:
