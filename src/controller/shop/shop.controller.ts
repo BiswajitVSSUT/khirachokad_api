@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import z from "zod";
 import { prisma } from "../../config/prisma.js";
+import { logger } from "../../config/logger.js";
 
 import { sendSuccess, sendError } from "../../utils/response.js";
 
@@ -41,7 +42,7 @@ export const createShop = async (req: Request, res: Response) => {
 
     sendSuccess(res, "New shop created successfully", { newShop }, 201);
   } catch (error: any) {
-    console.error('Create shop error:', error);
+    logger.error({ err: error }, "Create shop error");
     sendError(res, error.message || "Failed to create shop", null, 500);
   }
 };

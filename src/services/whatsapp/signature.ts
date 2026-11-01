@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { logger } from "../../config/logger.js";
 
 /**
  * Verifies Meta's X-Hub-Signature-256 header against the raw request body.
@@ -12,9 +13,7 @@ export function verifyWhatsAppSignature(
   const appSecret = process.env.WHATSAPP_APP_SECRET;
   if (!appSecret) {
     if (process.env.NODE_ENV === "production") {
-      console.error(
-        "WHATSAPP_APP_SECRET is not configured; rejecting WhatsApp webhook."
-      );
+      logger.error("WHATSAPP_APP_SECRET is not configured; rejecting WhatsApp webhook.");
       return false;
     }
     return true;

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Request, Response } from "express";
 
 import { verifyWhatsAppSignature } from "../../services/whatsapp/signature.js";
+import { logger } from "../../config/logger.js";
 import {
   processWhatsAppWebhook,
   type WhatsAppWebhookBody,
@@ -29,9 +30,7 @@ export const verifyWebhook = (req: Request, res: Response) => {
   const challenge = queryString(req.query["hub.challenge"]);
 
   if (!expectedToken) {
-    console.error(
-      "WHATSAPP_VERIFY_TOKEN is not configured; rejecting webhook verification."
-    );
+    logger.error("WHATSAPP_VERIFY_TOKEN is not configured; rejecting webhook verification.");
     return res.sendStatus(403);
   }
 
@@ -63,6 +62,6 @@ export const receiveWebhook = (req: Request, res: Response) => {
   res.sendStatus(200);
 
   void processWhatsAppWebhook(body).catch((error) => {
-    console.error("WhatsApp webhook processing failed:", error);
+    logger.error({ err: error }, "WhatsApp webhook processing failed");
   });
 };

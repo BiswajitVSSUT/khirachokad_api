@@ -5,6 +5,7 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "../../config/prisma.js";
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import { getConversation, getOrCreateCustomer } from "./customer.service.js";
 import {
@@ -98,11 +99,11 @@ async function sendWelcome(customer: customer): Promise<void> {
     await sendCatalogTemplate(customer.whatsappNumber);
   } catch (error) {
     // The template may not be available; still greet the customer.
-    console.error("Failed to send catalog template, falling back to text:", error);
+    logger.error({ err: error }, "Failed to send catalog template; falling back to text");
     try {
       await sendText(customer.whatsappNumber, WELCOME_MESSAGE);
     } catch (fallbackError) {
-      console.error("Failed to send welcome message:", fallbackError);
+      logger.error({ err: fallbackError }, "Failed to send welcome message");
     }
   }
 }
@@ -116,7 +117,7 @@ async function handleCatalogOrder(
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
 
-    console.error("Could not create order from catalog:", error.message);
+    logger.error({ err: error, customerId: customer.id }, "Could not create order from catalog");
     const message =
       error.message === "The submitted cart is empty"
         ? EMPTY_CART
@@ -191,7 +192,7 @@ export async function handleIncomingMessage(input: {
       try {
         await sendText(customer.whatsappNumber, ADDRESS_SAVED);
       } catch (error) {
-        console.error("Failed to send address confirmation:", error);
+        logger.error({ err: error, orderId: order.id }, "Failed to send address confirmation");
       }
       return;
     }

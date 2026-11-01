@@ -9,6 +9,7 @@ import cors from "cors";
 
 
 import { errorHandler } from "./middleware/error/errorHandler.js";
+import { httpLogger, logger } from "./config/logger.js";
 import authRouter from "./routes/auth/auth.routes.js";
 import shopRouter from "./routes/shop/shop.routes.js";
 import productRouter from "./routes/products/product.routes.js";
@@ -21,6 +22,7 @@ import orderRouter from "./routes/order/order.routes.js";
 
 
 app.use(cors());
+app.use(httpLogger);
 app.use(
   express.json({
     // Meta webhook payloads can be up to 3 MB.
@@ -51,5 +53,5 @@ app.use(errorHandler);
 
 
 app.listen(process.env.PORT || 3000,()=>{
-    console.log(`\n\n\nServer is running at http://localhost:${process.env.PORT || 3000}`);
+    logger.info({ port: process.env.PORT || 3000 }, "Server started");
 })

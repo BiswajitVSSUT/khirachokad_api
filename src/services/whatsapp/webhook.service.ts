@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../config/prisma.js";
+import { logger } from "../../config/logger.js";
 import {
   handleIncomingMessage,
   type InboundMessage,
@@ -149,7 +150,7 @@ export async function processWhatsAppWebhook(
       } catch (error) {
         // Keep processing the remaining changes. The event stays registered so
         // a retry cannot duplicate an order or outbound message.
-        console.error(`WhatsApp webhook "${field}" change failed:`, error);
+        logger.error({ err: error, field, wabaId }, "WhatsApp webhook change failed");
       }
     }
   }
@@ -242,7 +243,7 @@ async function handleMessages(ctx: ChangeContext): Promise<void> {
     await upsertInboundMessage({ messageId, from, type, message });
 
     await markMessageRead(messageId).catch((error) => {
-      console.error("Failed to mark WhatsApp message as read:", error);
+      logger.error({ err: error, messageId }, "Failed to mark WhatsApp message as read");
     });
 
     const inbound: InboundMessage = { id: messageId, type };

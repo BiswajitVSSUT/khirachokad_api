@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Prisma, type customer } from "@prisma/client";
 
 import { prisma } from "../../config/prisma.js";
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import {
   orderAddressRequestMessage,
@@ -195,7 +196,7 @@ export async function createOrderFromCatalog(
       })
     );
   } catch (error) {
-    console.error("Failed to send address request:", error);
+    logger.error({ err: error, orderId: createdOrder.id }, "Failed to send address request");
   }
 
   return createdOrder;
@@ -283,6 +284,6 @@ export async function notifyTeamNewOrder(
       })
     );
   } catch (error) {
-    console.error("Failed to notify team:", error);
+    logger.error({ err: error, orderNumber: order.orderNumber }, "Failed to notify team");
   }
 }
