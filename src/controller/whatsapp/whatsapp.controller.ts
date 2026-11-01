@@ -42,7 +42,7 @@ export const verifyWebhook = (req: Request, res: Response) => {
 };
 
 /** Incoming messages, statuses, and all other subscribed fields (POST). */
-export const receiveWebhook = (req: Request, res: Response) => {
+export const receiveWebhook = async (req: Request, res: Response) => {
   const signature = req.headers["x-hub-signature-256"];
   const rawBody = (req as RawBodyRequest).rawBody;
 
@@ -57,11 +57,14 @@ export const receiveWebhook = (req: Request, res: Response) => {
 
   const body = req.body as WhatsAppWebhookBody;
 
-  // Acknowledge quickly so Meta does not retry. Processing continues in the
-  // background; in a multi-instance deployment move this to a durable queue.
-  res.sendStatus(200);
-
-  void processWhatsAppWebhook(body).catch((error) => {
+  // Vercel may freeze or terminate an invocation once its response has been
+  // sent. Await processing so database work and outbound WhatsApp API calls
+  // are not abandoned after we acknowledge the webhook.
+  try {
+    await processWhatsAppWebhook(body);
+    return res.sendStatus(200);
+  } catch (error) {
     logger.error({ err: error }, "WhatsApp webhook processing failed");
-  });
+    return res.sendStatus(500);
+  }
 };
