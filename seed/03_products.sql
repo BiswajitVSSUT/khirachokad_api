@@ -1,7 +1,10 @@
 -- Dummy products for the seed shops.
+-- "whatsappProductId" must match the product retailer ID configured in
+-- Meta Commerce Manager for the WhatsApp catalog.
 INSERT INTO "products" (
   "id", "name", "description", "price", "image", "shopId",
-  "verificationId", "expiryDate", "createdAt", "updatedAt"
+  "verificationId", "expiryDate", "createdAt", "updatedAt",
+  "sku", "whatsappProductId", "unit", "isActive"
 )
 VALUES
   (
@@ -14,7 +17,11 @@ VALUES
     'KC-VERIFY-0001',
     '2027-01-31T00:00:00Z',
     NOW(),
-    NOW()
+    NOW(),
+    'KC-CUCUMBER-1KG',
+    'KC-CUCUMBER-1KG',
+    'kg',
+    TRUE
   ),
   (
     '33333333-3333-3333-3333-333333333332',
@@ -26,7 +33,11 @@ VALUES
     'KC-VERIFY-0002',
     '2027-02-15T00:00:00Z',
     NOW(),
-    NOW()
+    NOW(),
+    'KC-TOMATO-1KG',
+    'KC-TOMATO-1KG',
+    'kg',
+    TRUE
   ),
   (
     '33333333-3333-3333-3333-333333333333',
@@ -38,6 +49,14 @@ VALUES
     'KC-VERIFY-0003',
     '2027-06-30T00:00:00Z',
     NOW(),
-    NOW()
+    NOW(),
+    'KC-CHIPS-100G',
+    'KC-CHIPS-100G',
+    'pack',
+    TRUE
   )
-ON CONFLICT DO NOTHING;
+ON CONFLICT ("id") DO UPDATE SET
+  "sku" = EXCLUDED."sku",
+  "whatsappProductId" = EXCLUDED."whatsappProductId",
+  "unit" = EXCLUDED."unit",
+  "isActive" = EXCLUDED."isActive";

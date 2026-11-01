@@ -11,7 +11,7 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       # host 5434 avoids clashing with an existing local Postgres on 5432
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - kc_db_data:/var/lib/postgresql/data
     healthcheck:
