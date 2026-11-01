@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import z from "zod";
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import { prisma } from "../../config/prisma.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendSuccess, sendError } from "../../utils/response.js";
