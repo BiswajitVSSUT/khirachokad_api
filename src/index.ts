@@ -16,6 +16,7 @@ import productRouter from "./routes/products/product.routes.js";
 import reviewRouter from "./routes/review/review.routes.js";
 import whatsappRouter from "./routes/whatsapp/whatsapp.routes.js";
 import orderRouter from "./routes/order/order.routes.js";
+import chatRouter from "./routes/chat/chat.routes.js";
 
 
 
@@ -49,6 +50,7 @@ app.use("/api/v1/product",productRouter);
 app.use("/api/v1/review",reviewRouter)
 app.use("/api/v1/whatsapp", whatsappRouter);
 app.use("/api/v1/admin/orders", orderRouter);
+app.use("/api/v1/admin/chats", chatRouter);
 app.use(errorHandler);
 
 

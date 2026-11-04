@@ -8,7 +8,8 @@ import {
   type InboundMessage,
 } from "./conversation.service.js";
 import type { CatalogOrderInput } from "./order.service.js";
-import { markMessageRead } from "./whatsapp.service.js";
+import { downloadWhatsAppMedia, markMessageRead } from "./whatsapp.service.js";
+import { uploadChatImage } from "../media/cloudinary.service.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -305,6 +306,19 @@ async function upsertInboundMessage(input: {
     select: { id: true },
   });
   const timestamp = parseTimestamp(input.message.timestamp);
+  const text = asString(asRecord(input.message.text)?.body);
+  const mediaObject = asRecord(input.message[input.type]) ?? asRecord(input.message.image) ?? asRecord(input.message.video) ?? asRecord(input.message.document) ?? asRecord(input.message.audio);
+  const media = asString(mediaObject?.id);
+  const caption = asString(mediaObject?.caption);
+  let mediaUrl: string | null = null;
+  if (media) {
+    try {
+      const downloaded = await downloadWhatsAppMedia(media);
+      mediaUrl = await uploadChatImage(downloaded);
+    } catch (error) {
+      logger.error({ err: error, mediaId: media, messageId: input.messageId }, "Failed to download inbound WhatsApp media");
+    }
+  }
 
   await prisma.whatsappMessage.upsert({
     where: { waMessageId: input.messageId },
@@ -312,6 +326,9 @@ async function upsertInboundMessage(input: {
       type: input.type,
       fromNumber: input.from,
       customerId: customer?.id ?? null,
+      body: text ?? caption ?? null,
+      caption: caption ?? null,
+      mediaUrl,
       waTimestamp: timestamp ?? null,
     },
     create: {
@@ -321,6 +338,9 @@ async function upsertInboundMessage(input: {
       status: "received",
       fromNumber: input.from,
       customerId: customer?.id ?? null,
+      body: text ?? caption ?? null,
+      caption: caption ?? null,
+      mediaUrl,
       waTimestamp: timestamp ?? null,
     },
   });

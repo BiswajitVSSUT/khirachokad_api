@@ -90,18 +90,18 @@ export async function createOrderFromCatalog(
     catalogProducts.map((product) => [product.retailerId, product])
   );
 
-  const products = await prisma.products.findMany({
+  const products = await prisma.catalogProduct.findMany({
     where: {
-      whatsappProductId: { in: parsed.map((item) => item.retailerId) },
+      retailerId: { in: parsed.map((item) => item.retailerId) },
     },
   });
   const productsByRetailerId = new Map(
-    products.map((product) => [product.whatsappProductId, product])
+    products.map((product) => [product.retailerId, product])
   );
 
   let subtotal = new Prisma.Decimal(0);
   const orderItems: Array<{
-    productId: string;
+      catalogProductId: string;
     productName: string;
     quantity: number;
     unitPrice: Prisma.Decimal;
@@ -142,7 +142,7 @@ export async function createOrderFromCatalog(
     subtotal = subtotal.add(lineTotal);
 
     orderItems.push({
-      productId: product.id,
+      catalogProductId: product.id,
       productName: catalogProduct.name,
       quantity: item.quantity,
       unitPrice,

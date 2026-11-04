@@ -125,6 +125,49 @@ export async function sendText(to: string, body: string): Promise<unknown> {
   });
 }
 
+export async function sendImage(
+  to: string,
+  link: string,
+  caption?: string
+): Promise<unknown> {
+  return postMessage({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalizeNumber(to),
+    type: "image",
+    image: { link, ...(caption ? { caption } : {}) },
+  });
+}
+
+export async function sendMedia(
+  to: string,
+  link: string,
+  type: "image" | "video" | "document",
+  caption?: string,
+  filename?: string
+): Promise<unknown> {
+  const media = type === "image"
+    ? { link, ...(caption ? { caption } : {}) }
+    : type === "video"
+      ? { link, ...(caption ? { caption } : {}) }
+      : { link, ...(caption ? { caption } : {}), ...(filename ? { filename } : {}) };
+  return postMessage({ messaging_product: "whatsapp", recipient_type: "individual", to: normalizeNumber(to), type, [type]: media });
+}
+
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{ base64: string; mimeType: string; filename?: string }> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!token) throw new AppError("WHATSAPP_ACCESS_TOKEN is not configured", 500);
+  const version = process.env.WHATSAPP_API_VERSION || DEFAULT_GRAPH_VERSION;
+  const metadataResponse = await fetch("https://graph.facebook.com/" + version + "/" + encodeURIComponent(mediaId), { headers: { Authorization: "Bearer " + token } });
+  if (!metadataResponse.ok) throw new AppError("WhatsApp media metadata error (" + metadataResponse.status + ")", 502);
+  const metadata = (await metadataResponse.json()) as { url?: string; mime_type?: string; filename?: string };
+  if (!metadata.url) throw new AppError("WhatsApp media URL was not returned", 502);
+  const fileResponse = await fetch(metadata.url, { headers: { Authorization: "Bearer " + token } });
+  if (!fileResponse.ok) throw new AppError("WhatsApp media download error (" + fileResponse.status + ")", 502);
+  const bytes = Buffer.from(await fileResponse.arrayBuffer());
+  return { base64: bytes.toString("base64"), mimeType: metadata.mime_type || "application/octet-stream", ...(metadata.filename ? { filename: metadata.filename } : {}) };
+}
+
 /**
  * Sends the approved "catalog" template. The template contains a CATALOG
  * button named "View catalog" and no variables, so no components are needed.

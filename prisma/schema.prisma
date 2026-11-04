@@ -17,22 +17,29 @@ enum ConversationState {
 }
 
 enum OrderStatus {
+  PLACED
   AWAITING_ADDRESS
   PENDING_CONFIRMATION
   CONFIRMED
   REJECTED
   CANCELLED
   COMPLETED
+  DELIVERED
+  CANCELLED_BY_CUSTOMER
+  CANCELLED_BY_ADMIN
 }
 
 model customer {
   id             String         @id @default(uuid())
   whatsappNumber String         @unique
   name           String?
+  profileImage   String?
+  botBlacklist   Boolean        @default(false)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @default(now()) @updatedAt
   conversations  conversation[]
   orders         order[]
+  whatsappMessages whatsappMessage[]
 }
 
 model conversation {
@@ -69,15 +76,18 @@ model order {
 model orderItem {
   id          String   @id @default(uuid())
   orderId     String
-  productId   String
+  productId   String?
+  catalogProductId String?
   productName String
   quantity    Int
   unitPrice   Decimal  @db.Decimal(12, 2)
   lineTotal   Decimal  @db.Decimal(12, 2)
   order       order    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  product     products @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     products? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  catalogProduct catalogProduct? @relation(fields: [catalogProductId], references: [id], onDelete: Restrict)
 
   @@index([orderId])
+  @@index([catalogProductId])
 }
 
 model whatsappEvent {
@@ -101,6 +111,9 @@ model whatsappMessage {
   waMessageId     String    @unique
   direction       String
   type            String?
+  body            String?
+  mediaUrl        String?
+  caption         String?
   status          String?
   fromNumber      String?
   toNumber        String?
@@ -112,6 +125,7 @@ model whatsappMessage {
   waTimestamp     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
+  customer        customer? @relation(fields: [customerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([customerId])
   @@index([fromNumber])
@@ -215,6 +229,20 @@ model admin {
   avatar   String
 
   shops shop[]
+  quickReplies quickReply[]
+}
+
+model quickReply {
+  id        String   @id @default(uuid())
+  shortcut  String
+  text      String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  adminId   String?
+  admin     admin?   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
 }
 
 model products {
@@ -240,6 +268,28 @@ model products {
   orderItems orderItem[]
 
   @@index([name, price])
+}
+
+/// Products synchronised with the Meta/WhatsApp catalog. These are kept
+/// separate from the broader shop inventory so WhatsApp orders have a clear
+/// source of truth and stable Meta retailer IDs.
+model catalogProduct {
+  id                String   @id @default(uuid())
+  retailerId        String   @unique
+  metaProductId     String?  @unique
+  name              String
+  description       String?
+  image             String?
+  price             Decimal  @db.Decimal(12, 2)
+  currency          String   @default("INR")
+  availability      String   @default("in stock")
+  inventory         Int?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+  orderItems        orderItem[]
+
+  @@index([isActive, availability])
 }
 
 model review {

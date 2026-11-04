@@ -203,15 +203,6 @@ async function resolveShopId(explicitShopId) {
 async function commandPull() {
   const { catalog } = getCatalog();
   const limit = flags.has("limit") ? Number(flag("limit", "100")) : undefined;
-  const shopId = await resolveShopId(flag("shop-id", undefined));
-  const expiry = new Date(
-    process.env.CATALOG_DEFAULT_EXPIRY || "2099-12-31T00:00:00.000Z"
-  );
-
-  if (Number.isNaN(expiry.getTime())) {
-    throw new Error("CATALOG_DEFAULT_EXPIRY is not a valid date");
-  }
-
   const products = await fetchCatalogProducts(catalog, limit);
   let created = 0;
   let updated = 0;
@@ -229,19 +220,19 @@ async function commandPull() {
       price: parseMoney(remote.price),
       image: String(remote.image_url ?? ""),
       isActive: isStocked(remote.availability),
-      stockQuantity: toInteger(remote.inventory),
-      whatsappProductId: retailerId,
+      availability: String(remote.availability ?? "in stock").toLowerCase(),
+      inventory: toInteger(remote.inventory),
+      retailerId,
+      metaProductId: String(remote.id ?? "") || null,
     };
 
-    const existing = await prisma.products.findFirst({
-      where: {
-        OR: [{ whatsappProductId: retailerId }, { sku: retailerId }],
-      },
+    const existing = await prisma.catalogProduct.findUnique({
+      where: { retailerId },
       select: { id: true },
     });
 
     if (existing) {
-      await prisma.products.update({
+      await prisma.catalogProduct.update({
         where: { id: existing.id },
         data,
       });
@@ -249,15 +240,7 @@ async function commandPull() {
       continue;
     }
 
-    await prisma.products.create({
-      data: {
-        ...data,
-        sku: retailerId,
-        shopId,
-        verificationId: `catalog-${retailerId}`,
-        expiryDate: expiry,
-      },
-    });
+    await prisma.catalogProduct.create({ data });
     created += 1;
   }
 
@@ -267,7 +250,7 @@ async function commandPull() {
 }
 
 function buildPushRequest(product) {
-  const retailerId = String(product.whatsappProductId ?? "").trim();
+  const retailerId = String(product.retailerId ?? "").trim();
   const currency = flag("currency", process.env.CATALOG_CURRENCY || "INR");
   const storefront = flag(
     "storefront",
@@ -283,12 +266,12 @@ function buildPushRequest(product) {
     price: `${Number(parseMoney(product.price)).toFixed(2)} ${currency}`,
     image_link: product.image,
     link: `${storefront}/product/${product.id}`,
-    availability: product.isActive ? "in stock" : "out of stock",
+    availability: product.isActive ? product.availability : "out of stock",
     condition: "new",
   };
 
-  if (product.stockQuantity !== null) {
-    data.quantity_to_sell_on_facebook = product.stockQuantity;
+  if (product.inventory !== null) {
+    data.quantity_to_sell_on_facebook = product.inventory;
   }
 
   return data;
@@ -298,16 +281,15 @@ async function commandPush() {
   const includeInactive = hasFlag("include-inactive");
   const dryRun = hasFlag("dry-run");
 
-  const products = await prisma.products.findMany({
+  const products = await prisma.catalogProduct.findMany({
     where: {
-      whatsappProductId: { not: null },
       ...(includeInactive ? {} : { isActive: true }),
     },
     orderBy: { name: "asc" },
   });
 
   if (products.length === 0) {
-    console.log("No local products have a whatsappProductId. Nothing to push.");
+    console.log("No catalog products found. Nothing to push.");
     return;
   }
 

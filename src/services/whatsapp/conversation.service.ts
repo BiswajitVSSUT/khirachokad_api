@@ -142,6 +142,12 @@ export async function handleIncomingMessage(input: {
     const conversation = await getConversation(customer.id);
     const context = (conversation.context ?? {}) as Record<string, unknown>;
 
+    // A human agent has taken over this chat. Store inbound messages as usual,
+    // but never send bot replies or progress an automated order flow.
+    if (customer.botBlacklist) {
+      return;
+    }
+
     if (input.message.type === "order") {
       await handleCatalogOrder(customer, input.message.order);
       return;
