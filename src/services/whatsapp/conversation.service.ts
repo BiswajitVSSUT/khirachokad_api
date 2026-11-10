@@ -21,19 +21,21 @@ import {
 import {
   cancelAwaitingAddressOrder,
   createOrderFromCatalog,
+  createOrderFromFlow,
   notifyTeamNewOrder,
   saveDeliveryAddress,
   type CatalogOrderInput,
 } from "./order.service.js";
-import { sendCatalogTemplate, sendText } from "./whatsapp.service.js";
+import { sendOrderFlow, sendText, sendWelcomeTemplate } from "./whatsapp.service.js";
 
 export type InboundMessage = {
   id: string;
   type: string;
   text?: string;
   interactive?: {
-    button_reply?: { title?: string };
+    button_reply?: { id?: string; title?: string };
     list_reply?: { title?: string };
+    nfm_reply?: { response_json?: string };
   };
   order?: CatalogOrderInput;
 };
@@ -96,15 +98,42 @@ async function setState(
 
 async function sendWelcome(customer: customer): Promise<void> {
   try {
-    await sendCatalogTemplate(customer.whatsappNumber);
+    await sendWelcomeTemplate(customer.whatsappNumber);
   } catch (error) {
-    // The template may not be available; still greet the customer.
-    logger.error({ err: error }, "Failed to send catalog template; falling back to text");
+    logger.error({ err: error }, "Failed to send welcome template; falling back to text");
     try {
       await sendText(customer.whatsappNumber, WELCOME_MESSAGE);
     } catch (fallbackError) {
       logger.error({ err: fallbackError }, "Failed to send welcome message");
     }
+  }
+}
+
+function flowItems(message: InboundMessage): Array<{ retailerId: string; quantity: number }> | null {
+  const raw = message.interactive?.nfm_reply?.response_json;
+  if (!raw) return null;
+  try {
+    const response = JSON.parse(raw) as Record<string, unknown>;
+    const directItems = response.product_items ?? response.items;
+    if (Array.isArray(directItems)) {
+      return directItems.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const record = item as Record<string, unknown>;
+        const retailerId = String(record.product_retailer_id ?? record.retailerId ?? "").trim();
+        const quantity = Number(record.quantity);
+        return retailerId && Number.isSafeInteger(quantity) ? [{ retailerId, quantity }] : [];
+      });
+    }
+    // Static Flows can name each dropdown qty_<retailerId>, for example
+    // qty_uwb6wnx0ej. A value of 0 means that product was not selected.
+    return Object.entries(response).flatMap(([key, value]) => {
+      const match = key.match(/^(?:qty|quantity)_(.+)$/);
+      const retailerId = match?.[1];
+      const quantity = Number(value);
+      return retailerId && Number.isSafeInteger(quantity) ? [{ retailerId, quantity }] : [];
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -150,6 +179,27 @@ export async function handleIncomingMessage(input: {
 
     if (input.message.type === "order") {
       await handleCatalogOrder(customer, input.message.order);
+      return;
+    }
+
+    const selectedFlowItems = flowItems(input.message);
+    if (selectedFlowItems) {
+      try {
+        await createOrderFromFlow(customer, selectedFlowItems);
+      } catch (error) {
+        if (!(error instanceof AppError)) throw error;
+        await sendText(customer.whatsappNumber, error.message === "The submitted cart is empty" ? EMPTY_CART : PRODUCT_UNAVAILABLE);
+      }
+      return;
+    }
+
+    const buttonId = input.message.interactive?.button_reply?.id;
+    if (buttonId === "kc_order_now") {
+      await sendOrderFlow(customer.whatsappNumber);
+      return;
+    }
+    if (buttonId === "kc_visit_site") {
+      await sendText(customer.whatsappNumber, "https://www.khirachokada.com/");
       return;
     }
 

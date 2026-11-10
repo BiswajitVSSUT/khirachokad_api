@@ -43,7 +43,6 @@ function toSummaryItems(
   return items.map((item) => ({
     name: item.productName,
     quantity: item.quantity,
-    lineTotal: item.lineTotal.toFixed(2),
   }));
 }
 
@@ -191,7 +190,6 @@ export async function createOrderFromCatalog(
       customer.whatsappNumber,
       orderAddressRequestMessage({
         orderNumber: createdOrder.orderNumber,
-        total: createdOrder.totalAmount.toFixed(2),
         items: toSummaryItems(createdOrder.items),
       })
     );
@@ -199,6 +197,76 @@ export async function createOrderFromCatalog(
     logger.error({ err: error, orderId: createdOrder.id }, "Failed to send address request");
   }
 
+  return createdOrder;
+}
+
+/**
+ * Creates an order from a custom WhatsApp Flow. Prices are retained internally
+ * for order records but are never returned to the customer in bot messages.
+ */
+export async function createOrderFromFlow(
+  customer: customer,
+  rawItems: Array<{ retailerId: string; quantity: number }>
+) {
+  const requested = rawItems.filter(
+    (item) => item.retailerId && Number.isSafeInteger(item.quantity) && item.quantity > 0
+  );
+  if (requested.length === 0) throw new AppError("The submitted cart is empty", 400);
+
+  const products = await prisma.catalogProduct.findMany({
+    where: { retailerId: { in: requested.map((item) => item.retailerId) }, isActive: true },
+  });
+  const byRetailerId = new Map(products.map((product) => [product.retailerId, product]));
+  let subtotal = new Prisma.Decimal(0);
+  const items: Array<{
+    catalogProductId: string;
+    productName: string;
+    quantity: number;
+    unitPrice: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+  }> = [];
+
+  for (const item of requested) {
+    const product = byRetailerId.get(item.retailerId);
+    if (!product || !isAvailable(product.availability)) throw new AppError("Product unavailable", 409);
+    if (product.inventory !== null && product.inventory < item.quantity) {
+      throw new AppError(`Insufficient stock for ${product.name}`, 409);
+    }
+    const unitPrice = new Prisma.Decimal(product.price);
+    const lineTotal = unitPrice.mul(item.quantity);
+    subtotal = subtotal.add(lineTotal);
+    items.push({ catalogProductId: product.id, productName: product.name, quantity: item.quantity, unitPrice, lineTotal });
+  }
+
+  const createdOrder = await prisma.$transaction(async (tx) => {
+    await tx.order.updateMany({
+      where: { customerId: customer.id, status: "AWAITING_ADDRESS" },
+      data: { status: "CANCELLED" },
+    });
+    const order = await tx.order.create({
+      data: {
+        orderNumber: createOrderNumber(),
+        customerId: customer.id,
+        status: "AWAITING_ADDRESS",
+        customerName: customer.name,
+        subtotal,
+        deliveryCharge: new Prisma.Decimal(0),
+        totalAmount: subtotal,
+        items: { create: items },
+      },
+      include: { items: true },
+    });
+    await tx.conversation.update({
+      where: { customerId: customer.id },
+      data: { state: "AWAITING_ADDRESS", context: { orderId: order.id, orderNumber: order.orderNumber } },
+    });
+    return order;
+  });
+
+  await sendText(customer.whatsappNumber, orderAddressRequestMessage({
+    orderNumber: createdOrder.orderNumber,
+    items: toSummaryItems(createdOrder.items),
+  })).catch((error) => logger.error({ err: error, orderId: createdOrder.id }, "Failed to send address request"));
   return createdOrder;
 }
 
@@ -232,6 +300,13 @@ export async function saveDeliveryAddress(
         state: "ORDER_PENDING_CONFIRMATION",
         context: { orderId },
       },
+    });
+
+    // Hand this conversation to a human as soon as a complete order/address
+    // has been captured. The admin toggle remains available to override this.
+    await tx.customer.update({
+      where: { id: customerId },
+      data: { botBlacklist: true },
     });
 
     return tx.order.findUnique({
@@ -279,7 +354,6 @@ export async function notifyTeamNewOrder(
         customerName: order.customerName,
         customerPhone,
         address: order.deliveryAddress ?? "-",
-        total: order.totalAmount.toFixed(2),
         items: toSummaryItems(order.items),
       })
     );

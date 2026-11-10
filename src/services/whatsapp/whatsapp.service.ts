@@ -1,4 +1,5 @@
 import { AppError } from "../../utils/AppError.js";
+import { prisma } from "../../config/prisma.js";
 
 const DEFAULT_GRAPH_VERSION = "v23.0";
 
@@ -46,7 +47,38 @@ async function postMessage(payload: Record<string, unknown>): Promise<unknown> {
     );
   }
 
-  return response.json();
+  const result = await response.json();
+  await storeOutboundMessage(payload, result);
+  return result;
+}
+
+async function storeOutboundMessage(
+  payload: Record<string, unknown>,
+  result: unknown
+): Promise<void> {
+  const to = typeof payload.to === "string" ? normalizeNumber(payload.to) : "";
+  const type = typeof payload.type === "string" ? payload.type : "";
+  const messageId = (result as { messages?: Array<{ id?: string }> })?.messages?.[0]?.id;
+  if (!to || !type || !messageId) return;
+
+  const text = payload.text as { body?: unknown } | undefined;
+  const interactive = payload.interactive as { body?: { text?: unknown } } | undefined;
+  const template = payload.template as { name?: unknown } | undefined;
+  const body =
+    (typeof text?.body === "string" && text.body) ||
+    (typeof interactive?.body?.text === "string" && interactive.body.text) ||
+    (typeof template?.name === "string" && `[Template] ${template.name}`) ||
+    null;
+  const customer = await prisma.customer.findUnique({
+    where: { whatsappNumber: to },
+    select: { id: true },
+  });
+
+  await prisma.whatsappMessage.upsert({
+    where: { waMessageId: messageId },
+    update: { direction: "OUTBOUND", type, status: "sent", toNumber: to, customerId: customer?.id ?? null, body },
+    create: { waMessageId: messageId, direction: "OUTBOUND", type, status: "sent", toNumber: to, customerId: customer?.id ?? null, body },
+  });
 }
 
 /**
@@ -122,6 +154,100 @@ export async function sendText(to: string, body: string): Promise<unknown> {
     to: normalizeNumber(to),
     type: "text",
     text: { body, preview_url: false },
+  });
+}
+
+/** A non-template welcome sent within WhatsApp's customer-service window. */
+export async function sendWelcomeButtons(
+  to: string,
+  body: string,
+  imageLink?: string
+): Promise<unknown> {
+  return postMessage({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalizeNumber(to),
+    type: "interactive",
+    interactive: {
+      type: "button",
+      ...(imageLink ? { header: { type: "image", image: { link: imageLink } } } : {}),
+      body: { text: body },
+      action: {
+        buttons: [
+          { type: "reply", reply: { id: "kc_order_now", title: "Order Now" } },
+          { type: "reply", reply: { id: "kc_visit_site", title: "Visit site" } },
+        ],
+      },
+    },
+  });
+}
+
+/** Sends the approved welcome template (ID 1122663833986353). */
+export async function sendWelcomeTemplate(to: string): Promise<unknown> {
+  return postMessage({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalizeNumber(to),
+    type: "template",
+    template: {
+      name: process.env.WHATSAPP_WELCOME_TEMPLATE_NAME || "welcome",
+      language: { code: process.env.WHATSAPP_WELCOME_TEMPLATE_LANGUAGE || "en" },
+      components: [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: {
+                link: process.env.WHATSAPP_WELCOME_IMAGE_URL || "https://res.cloudinary.com/j3jwwx4w/image/upload/v1794243011/336309a1-fde4-4608-85b9-1cb8949540a7.png",
+              },
+            },
+          ],
+        },
+        // The approved welcome template's first CTA opens the configured Flow.
+        // WhatsApp requires a per-send flow token even though the Flow ID is
+        // stored in the template definition.
+        {
+          type: "button",
+          sub_type: "flow",
+          index: "0",
+          parameters: [
+            {
+              type: "action",
+              action: { flow_token: `welcome-${Date.now()}` },
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+/** Opens the published no-price product/quantity WhatsApp Flow. */
+export async function sendOrderFlow(to: string): Promise<unknown> {
+  const flowId = process.env.WHATSAPP_ORDER_FLOW_ID;
+  if (!flowId) throw new AppError("WHATSAPP_ORDER_FLOW_ID is not configured", 500);
+
+  return postMessage({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalizeNumber(to),
+    type: "interactive",
+    interactive: {
+      type: "flow",
+      body: { text: "Select products and quantities to place your order." },
+      action: {
+        name: "flow",
+        parameters: {
+          flow_message_version: "3",
+          flow_token: `order-${Date.now()}`,
+          flow_id: flowId,
+          flow_cta: "Order Now",
+          flow_action: "navigate",
+          flow_action_payload: { screen: process.env.WHATSAPP_ORDER_FLOW_SCREEN_ID || "PRODUCTS" },
+        },
+      },
+    },
   });
 }
 

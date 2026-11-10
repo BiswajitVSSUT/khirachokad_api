@@ -193,6 +193,14 @@ export const updateOrder = async (req: Request, res: Response) => {
         ...(input.customerName ? { name: input.customerName } : {}),
       }});
     }
+    if (input.status === "DELIVERED") {
+      // Only release customers automatically held by a completed order.
+      // Manual blacklist changes remain untouched for every other status.
+      await tx.customer.updateMany({
+        where: { id: existing.customerId, botBlacklist: true },
+        data: { botBlacklist: false },
+      });
+    }
     const itemData = input.items?.map((item) => ({
       ...(item.catalogProductId ? { catalogProductId: item.catalogProductId } : {}),
       productName: item.productName, quantity: item.quantity,

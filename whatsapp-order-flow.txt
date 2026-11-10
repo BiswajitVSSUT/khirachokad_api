@@ -1,0 +1,35 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "PRODUCTS",
+      "title": "Place Your Order",
+      "terminal": true,
+      "success": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "https://res.cloudinary.com/j3jwwx4w/image/upload/v1794243011/336309a1-fde4-4608-85b9-1cb8949540a7.png",
+            "alt-text": "Khira Chokada products",
+            "scale-type": "contain",
+            "aspect-ratio": 1.7778
+          },
+          { "type": "TextHeading", "text": "KHIRA CHOKADA" },
+          { "type": "TextBody", "text": "Select quantity for each product. Select 0 if you do not want a product." },
+          { "type": "TextSubheading", "text": "Khira Chokada" },
+          { "type": "Dropdown", "name": "qty_n48k3wa2ry", "label": "Quantity", "required": true, "init-value": "0", "data-source": [{ "id": "0", "title": "0" }, { "id": "1", "title": "1" }, { "id": "2", "title": "2" }, { "id": "3", "title": "3" }, { "id": "4", "title": "4" }, { "id": "5", "title": "5" }] },
+          { "type": "TextSubheading", "text": "Protein Chokada" },
+          { "type": "Dropdown", "name": "qty_rieyuawu46", "label": "Quantity", "required": true, "init-value": "0", "data-source": [{ "id": "0", "title": "0" }, { "id": "1", "title": "1" }, { "id": "2", "title": "2" }, { "id": "3", "title": "3" }, { "id": "4", "title": "4" }, { "id": "5", "title": "5" }] },
+          { "type": "TextSubheading", "text": "Milk Sagar" },
+          { "type": "Dropdown", "name": "qty_h8n2bgc47h", "label": "Quantity", "required": true, "init-value": "0", "data-source": [{ "id": "0", "title": "0" }, { "id": "1", "title": "1" }, { "id": "2", "title": "2" }, { "id": "3", "title": "3" }, { "id": "4", "title": "4" }, { "id": "5", "title": "5" }] },
+          { "type": "TextSubheading", "text": "Gai Chokada" },
+          { "type": "Dropdown", "name": "qty_8w19oji9vi", "label": "Quantity", "required": true, "init-value": "0", "data-source": [{ "id": "0", "title": "0" }, { "id": "1", "title": "1" }, { "id": "2", "title": "2" }, { "id": "3", "title": "3" }, { "id": "4", "title": "4" }, { "id": "5", "title": "5" }] },
+          { "type": "Footer", "label": "Submit Order", "on-click-action": { "name": "complete", "payload": { "qty_rieyuawu46": "${form.qty_rieyuawu46}", "qty_h8n2bgc47h": "${form.qty_h8n2bgc47h}", "qty_8w19oji9vi": "${form.qty_8w19oji9vi}", "qty_n48k3wa2ry": "${form.qty_n48k3wa2ry}" } } }
+        ]
+      }
+    }
+  ]
+}

@@ -1,11 +1,8 @@
 // Customer-facing copy is Odia only.
 
 export const WELCOME_MESSAGE = `🙏 ନମସ୍କାର!
-
 KHIRA CHOKADA ପରିବାରକୁ ସ୍ୱାଗତ। 🐄🌾
-
 ଆମର ଉତ୍ପାଦ ଦେଖିବା ଓ ଅର୍ଡର କରିବା ପାଇଁ ତଳେ ଥିବା ବଟନ୍ ଦବାନ୍ତୁ।
-
 ଯେକୌଣସି ସାହାଯ୍ୟ ପାଇଁ ଆମକୁ ମେସେଜ୍ କରନ୍ତୁ। 🙏`;
 
 export const ADDRESS_PROMPT = `ଦୟାକରି ଆପଣଙ୍କ ସମ୍ପୂର୍ଣ୍ଣ ଡେଲିଭରି ଠିକଣା ପଠାନ୍ତୁ — ଗାଁ/ସହର, ବ୍ଲକ, ଜିଲ୍ଲା ଓ ପିନ୍ କୋଡ୍ ସହିତ। 🙏`;
@@ -29,18 +26,16 @@ export const PRODUCT_UNAVAILABLE = `କ୍ଷମା କରନ୍ତୁ, ଆପ�
 export type OrderSummaryItem = {
   name: string;
   quantity: number;
-  lineTotal: string;
 };
 
 function formatItems(items: OrderSummaryItem[]): string {
   return items
-    .map((item) => `• ${item.name} × ${item.quantity} = ₹${item.lineTotal}`)
+    .map((item) => `• ${item.name} × ${item.quantity}`)
     .join("\n");
 }
 
 export function orderAddressRequestMessage(input: {
   orderNumber: string;
-  total: string;
   items: OrderSummaryItem[];
 }): string {
   return `🙏 ଧନ୍ୟବାଦ! ଆପଣଙ୍କ ଅର୍ଡର ଆମେ ପାଇଛୁ।
@@ -48,7 +43,6 @@ export function orderAddressRequestMessage(input: {
 📦 ଅର୍ଡର ନମ୍ବର: ${input.orderNumber}
 🛒 ସାମଗ୍ରୀ:
 ${formatItems(input.items)}
-💰 ମୋଟ ରାଶି: ₹${input.total}
 
 ଦୟାକରି ଆପଣଙ୍କ ସମ୍ପୂର୍ଣ୍ଣ ଡେଲିଭରି ଠିକଣା ପଠାନ୍ତୁ (ଗାଁ/ସହର, ବ୍ଲକ, ଜିଲ୍ଲା ଓ ପିନ୍ କୋଡ୍)।
 
@@ -60,7 +54,6 @@ export function teamOrderAlertMessage(input: {
   customerName: string | null;
   customerPhone: string;
   address: string;
-  total: string;
   items: OrderSummaryItem[];
 }): string {
   return `🆕 NEW WHATSAPP ORDER — KHIRA CHOKADA
@@ -70,8 +63,6 @@ Customer: ${input.customerName ?? "Unknown"} (${input.customerPhone})
 
 Items:
 ${formatItems(input.items)}
-
-Total: ₹${input.total}
 
 Delivery address:
 ${input.address}

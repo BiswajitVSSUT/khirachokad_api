@@ -1,0 +1,83 @@
+export META_ACCESS_TOKEN='YOUR_NEW_ACCESS_TOKEN'
+
+curl -i -X POST \
+  'https://graph.facebook.com/v27.0/1621989312756946/items_batch' \
+  --data-urlencode 'item_type=PRODUCT_ITEM' \
+  --data-urlencode 'requests=[
+    {
+      "method": "CREATE",
+      "data": {
+        "id": "uwb6wnx0ej",
+        "title": "Combo",
+        "description": "Khira Chokada + Gai Chokada + Protien Chokada + Milk Sagar",
+        "brand": "Khira Chokada",
+        "price": "2000.00 INR",
+        "image_link": "https://scontent.fbbi2-1.fna.fbcdn.net/v/t45.5328-4/881397685_2195338291379770_5056542078718734785_n.jpg",
+        "link": "https://khirachokada.com/product/bcff4d89-cbf1-49b9-acf5-411d25ca5b6b",
+        "availability": "in stock",
+        "condition": "new",
+        "quantity_to_sell_on_facebook": 100
+      }
+    },
+    {
+      "method": "CREATE",
+      "data": {
+        "id": "8w19oji9vi",
+        "title": "Gai Chokada",
+        "description": "Gai Chokada for cattle",
+        "brand": "Khira Chokada",
+        "price": "500.00 INR",
+        "image_link": "https://scontent.fbbi2-3.fna.fbcdn.net/v/t45.5328-4/875353217_973780435294899_1893972663367350399_n.jpg",
+        "link": "https://khirachokada.com/product/7119f7fc-bc90-494e-8719-b18bebee034e",
+        "availability": "in stock",
+        "condition": "new",
+        "quantity_to_sell_on_facebook": 100
+      }
+    },
+    {
+      "method": "CREATE",
+      "data": {
+        "id": "n48k3wa2ry",
+        "title": "Khira Chokada",
+        "description": "Khira Chokada for cattle",
+        "brand": "Khira Chokada",
+        "price": "500.00 INR",
+        "image_link": "https://scontent.fbbi2-1.fna.fbcdn.net/v/t45.5328-4/881397685_2195338291379770_5056542078718734785_n.jpg",
+        "link": "https://khirachokada.com/product/cbc5267d-ef9b-4fd1-9470-5188d3c0ccd6",
+        "availability": "in stock",
+        "condition": "new",
+        "quantity_to_sell_on_facebook": 100
+      }
+    },
+    {
+      "method": "CREATE",
+      "data": {
+        "id": "h8n2bgc47h",
+        "title": "Milk Sagar",
+        "description": "Milk Sagar Cattle feed",
+        "brand": "Khira Chokada",
+        "price": "500.00 INR",
+        "image_link": "https://scontent.fbbi2-1.fna.fbcdn.net/v/t45.5328-4/874668634_2707039486397822_1938305252077567275_n.jpg",
+        "link": "https://khirachokada.com/product/5a7a7dc4-d964-4a57-8df7-5cee37363d59",
+        "availability": "in stock",
+        "condition": "new",
+        "quantity_to_sell_on_facebook": 100
+      }
+    },
+    {
+      "method": "CREATE",
+      "data": {
+        "id": "rieyuawu46",
+        "title": "Protien Chokada",
+        "description": "Protien Sagar for cattle",
+        "brand": "Khira Chokada",
+        "price": "500.00 INR",
+        "image_link": "https://scontent.fbbi2-4.fna.fbcdn.net/v/t45.5328-4/876342862_1688746252865460_8431216655807678769_n.jpg",
+        "link": "https://khirachokada.com/product/adfeac2d-01b2-4f91-8a20-d879c80dbc10",
+        "availability": "in stock",
+        "condition": "new",
+        "quantity_to_sell_on_facebook": 100
+      }
+    }
+  ]' \
+  --data-urlencode "access_token=$META_ACCESS_TOKEN"
