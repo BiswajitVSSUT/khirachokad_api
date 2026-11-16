@@ -114,6 +114,10 @@ model whatsappMessage {
   body            String?
   mediaUrl        String?
   caption         String?
+  locationLatitude  Float?
+  locationLongitude Float?
+  locationName      String?
+  locationAddress   String?
   status          String?
   fromNumber      String?
   toNumber        String?

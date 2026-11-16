@@ -26,7 +26,7 @@ import {
   saveDeliveryAddress,
   type CatalogOrderInput,
 } from "./order.service.js";
-import { sendOrderFlow, sendText, sendWelcomeTemplate } from "./whatsapp.service.js";
+import { sendCatalogTemplate, sendOrderFlow, sendText } from "./whatsapp.service.js";
 
 export type InboundMessage = {
   id: string;
@@ -46,6 +46,8 @@ const GREETINGS = new Set([
   "hiii",
   "hello",
   "hey",
+  "heyy",
+  "heyyy",
   "namaskar",
   "namaste",
   "start",
@@ -98,9 +100,9 @@ async function setState(
 
 async function sendWelcome(customer: customer): Promise<void> {
   try {
-    await sendWelcomeTemplate(customer.whatsappNumber);
+    await sendCatalogTemplate(customer.whatsappNumber);
   } catch (error) {
-    logger.error({ err: error }, "Failed to send welcome template; falling back to text");
+    logger.error({ err: error }, "Failed to send catalog template; falling back to text");
     try {
       await sendText(customer.whatsappNumber, WELCOME_MESSAGE);
     } catch (fallbackError) {
@@ -174,6 +176,12 @@ export async function handleIncomingMessage(input: {
     // A human agent has taken over this chat. Store inbound messages as usual,
     // but never send bot replies or progress an automated order flow.
     if (customer.botBlacklist) {
+      return;
+    }
+
+    // A WhatsApp location pin is recorded for the admin app, but it is not a
+    // text address and must not trigger a welcome or fallback bot response.
+    if (input.message.type === "location") {
       return;
     }
 

@@ -15,6 +15,14 @@ import {
   sendText,
 } from "./whatsapp.service.js";
 
+// Neon can take several seconds to establish a connection after an idle
+// period. Prisma's interactive-transaction default is only five seconds,
+// which is too short for the small, atomic order state changes below.
+const ORDER_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const;
+
 export type CatalogOrderItemInput = {
   product_retailer_id?: string;
   quantity?: number;
@@ -183,7 +191,7 @@ export async function createOrderFromCatalog(
     });
 
     return newOrder;
-  });
+  }, ORDER_TRANSACTION_OPTIONS);
 
   try {
     await sendText(
@@ -261,7 +269,7 @@ export async function createOrderFromFlow(
       data: { state: "AWAITING_ADDRESS", context: { orderId: order.id, orderNumber: order.orderNumber } },
     });
     return order;
-  });
+  }, ORDER_TRANSACTION_OPTIONS);
 
   await sendText(customer.whatsappNumber, orderAddressRequestMessage({
     orderNumber: createdOrder.orderNumber,
@@ -313,7 +321,7 @@ export async function saveDeliveryAddress(
       where: { id: orderId },
       include: { items: true },
     });
-  });
+  }, ORDER_TRANSACTION_OPTIONS);
 }
 
 export async function cancelAwaitingAddressOrder(

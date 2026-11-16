@@ -63,6 +63,11 @@ function asInteger(value: unknown): number | undefined {
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
+function asFiniteNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(asString(value));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function parseTimestamp(value: unknown): Date | undefined {
   const raw = asString(value);
   if (!raw) return undefined;
@@ -129,6 +134,10 @@ async function registerEvent(input: EventInput): Promise<boolean> {
   }
 }
 
+async function unregisterEvent(eventKey: string): Promise<void> {
+  await prisma.whatsappEvent.deleteMany({ where: { eventKey } });
+}
+
 // ---------------------------------------------------------------------------
 // Entry point.
 // ---------------------------------------------------------------------------
@@ -137,6 +146,8 @@ export async function processWhatsAppWebhook(
   body: WhatsAppWebhookBody
 ): Promise<void> {
   if (body.object !== "whatsapp_business_account") return;
+
+  let firstError: unknown;
 
   for (const entry of body.entry ?? []) {
     const wabaId = asString(entry.id);
@@ -149,12 +160,16 @@ export async function processWhatsAppWebhook(
       try {
         await handleChange({ field, value, wabaId });
       } catch (error) {
-        // Keep processing the remaining changes. The event stays registered so
-        // a retry cannot duplicate an order or outbound message.
         logger.error({ err: error, field, wabaId }, "WhatsApp webhook change failed");
+        // Process the other changes in this delivery, but return a failure to
+        // Meta afterwards. It will retry the delivery; successfully recorded
+        // events are idempotently skipped on that retry.
+        firstError ??= error;
       }
     }
   }
+
+  if (firstError) throw firstError;
 }
 
 async function handleChange(ctx: ChangeContext): Promise<void> {
@@ -230,8 +245,9 @@ async function handleMessages(ctx: ChangeContext): Promise<void> {
     if (!messageId || !from) continue;
 
     const type = asString(message.type) ?? "unknown";
+    const eventKey = `messages:message:${messageId}`;
     const isNew = await registerEvent({
-      eventKey: `messages:message:${messageId}`,
+      eventKey,
       messageId,
       field: ctx.field,
       eventType: `message.${type}`,
@@ -241,32 +257,41 @@ async function handleMessages(ctx: ChangeContext): Promise<void> {
     });
     if (!isNew) continue;
 
-    await upsertInboundMessage({ messageId, from, type, message });
+    try {
+      await upsertInboundMessage({ messageId, from, type, message });
 
-    await markMessageRead(messageId).catch((error) => {
-      logger.error({ err: error, messageId }, "Failed to mark WhatsApp message as read");
-    });
+      await markMessageRead(messageId).catch((error) => {
+        logger.error({ err: error, messageId }, "Failed to mark WhatsApp message as read");
+      });
 
-    const inbound: InboundMessage = { id: messageId, type };
-    const textBody = asString(asRecord(message.text)?.body);
-    if (textBody !== undefined) inbound.text = textBody;
+      const inbound: InboundMessage = { id: messageId, type };
+      const textBody = asString(asRecord(message.text)?.body);
+      if (textBody !== undefined) inbound.text = textBody;
 
-    const interactive = asRecord(message.interactive);
-    if (interactive) {
-      inbound.interactive =
-        interactive as NonNullable<InboundMessage["interactive"]>;
+      const interactive = asRecord(message.interactive);
+      if (interactive) {
+        inbound.interactive =
+          interactive as NonNullable<InboundMessage["interactive"]>;
+      }
+
+      const order = asRecord(message.order);
+      if (type === "order" && order) {
+        inbound.order = order as CatalogOrderInput;
+      }
+
+      await handleIncomingMessage({
+        phone: from,
+        ...(contactName !== undefined ? { name: contactName } : {}),
+        message: inbound,
+      });
+    } catch (error) {
+      // A pre-recorded event must not suppress Meta's retry when its business
+      // processing failed (for example while Neon is temporarily unavailable).
+      await unregisterEvent(eventKey).catch((cleanupError) => {
+        logger.error({ err: cleanupError, messageId }, "Failed to release WhatsApp event for retry");
+      });
+      throw error;
     }
-
-    const order = asRecord(message.order);
-    if (type === "order" && order) {
-      inbound.order = order as CatalogOrderInput;
-    }
-
-    await handleIncomingMessage({
-      phone: from,
-      ...(contactName !== undefined ? { name: contactName } : {}),
-      message: inbound,
-    });
   }
 
   for (const raw of asArray(value.statuses)) {
@@ -307,6 +332,10 @@ async function upsertInboundMessage(input: {
   });
   const timestamp = parseTimestamp(input.message.timestamp);
   const text = asString(asRecord(input.message.text)?.body);
+  const location = input.type === "location" ? asRecord(input.message.location) : undefined;
+  const latitude = asFiniteNumber(location?.latitude);
+  const longitude = asFiniteNumber(location?.longitude);
+  const hasLocation = latitude !== undefined && longitude !== undefined && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
   const mediaObject = asRecord(input.message[input.type]) ?? asRecord(input.message.image) ?? asRecord(input.message.video) ?? asRecord(input.message.document) ?? asRecord(input.message.audio);
   const media = asString(mediaObject?.id);
   const caption = asString(mediaObject?.caption);
@@ -329,6 +358,10 @@ async function upsertInboundMessage(input: {
       body: text ?? caption ?? null,
       caption: caption ?? null,
       mediaUrl,
+      locationLatitude: hasLocation ? latitude : null,
+      locationLongitude: hasLocation ? longitude : null,
+      locationName: hasLocation ? asString(location?.name) ?? null : null,
+      locationAddress: hasLocation ? asString(location?.address) ?? null : null,
       waTimestamp: timestamp ?? null,
     },
     create: {
@@ -341,6 +374,10 @@ async function upsertInboundMessage(input: {
       body: text ?? caption ?? null,
       caption: caption ?? null,
       mediaUrl,
+      locationLatitude: hasLocation ? latitude : null,
+      locationLongitude: hasLocation ? longitude : null,
+      locationName: hasLocation ? asString(location?.name) ?? null : null,
+      locationAddress: hasLocation ? asString(location?.address) ?? null : null,
       waTimestamp: timestamp ?? null,
     },
   });
