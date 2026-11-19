@@ -10,6 +10,7 @@ import {
   type OrderSummaryItem,
 } from "./messages.js";
 import {
+  sendTeamAlert,
   sendText,
 } from "./whatsapp.service.js";
 import { enqueueTeamAlerts } from "./outbox.service.js";
@@ -21,6 +22,8 @@ const ORDER_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
   timeout: 30_000,
 } as const;
+
+const isServerlessRuntime = Boolean(process.env.VERCEL);
 
 export type CatalogOrderItemInput = {
   product_retailer_id?: string;
@@ -298,7 +301,10 @@ export async function saveDeliveryAddress(
       where: { id: orderId },
       include: { items: true },
     });
-    if (order) {
+    // Vercel freezes a function after its HTTP response, so its in-process
+    // worker cannot reliably consume delayed jobs. The webhook path sends the
+    // alert after the customer confirmation in that environment instead.
+    if (order && !isServerlessRuntime) {
       const customer = await tx.customer.findUniqueOrThrow({
         where: { id: customerId }, select: { whatsappNumber: true },
       });
@@ -347,7 +353,10 @@ export async function notifyTeamNewOrder(
 ): Promise<void> {
   // Kept for compatibility with callers outside the webhook flow. Webhooks
   // enqueue the alert in saveDeliveryAddress's transaction instead.
-  await prisma.$transaction((tx) => enqueueTeamAlerts(tx,
-    teamOrderAlertMessage({ orderNumber: order.orderNumber, customerName: order.customerName, customerPhone, address: order.deliveryAddress ?? "-", items: toSummaryItems(order.items) })
-  ));
+  const body = teamOrderAlertMessage({ orderNumber: order.orderNumber, customerName: order.customerName, customerPhone, address: order.deliveryAddress ?? "-", items: toSummaryItems(order.items) });
+  if (isServerlessRuntime) {
+    await sendTeamAlert(body);
+    return;
+  }
+  await prisma.$transaction((tx) => enqueueTeamAlerts(tx, body));
 }

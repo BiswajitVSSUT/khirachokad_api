@@ -22,6 +22,7 @@ import {
   cancelAwaitingAddressOrder,
   createOrderFromCatalog,
   createOrderFromFlow,
+  notifyTeamNewOrder,
   saveDeliveryAddress,
   type CatalogOrderInput,
 } from "./order.service.js";
@@ -254,6 +255,14 @@ export async function handleIncomingMessage(input: {
         await sendText(customer.whatsappNumber, ADDRESS_SAVED);
       } catch (error) {
         logger.error({ err: error, orderId: order.id }, "Failed to send address confirmation");
+      }
+      // Serverless platforms cannot keep the in-process outbox worker alive
+      // after a webhook response. Send team alerts here, only after the
+      // customer confirmation attempt, when deployed on Vercel.
+      if (process.env.VERCEL) {
+        await notifyTeamNewOrder(order, customer.whatsappNumber).catch((error) =>
+          logger.error({ err: error, orderId: order.id }, "Failed to notify team")
+        );
       }
       return;
     }
