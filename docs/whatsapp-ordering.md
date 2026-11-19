@@ -91,7 +91,8 @@ WHATSAPP_CATALOG_ID="..."
 WHATSAPP_CATALOG_THUMBNAIL_ID="..."
 WHATSAPP_CATALOG_TEMPLATE_NAME="catalog"
 WHATSAPP_CATALOG_TEMPLATE_LANGUAGE="en"
-TEAM_WHATSAPP_NUMBER="91XXXXXXXXXX"
+# Use commas to send internal alerts to multiple team members.
+TEAM_WHATSAPP_NUMBER="91XXXXXXXXXX,91YYYYYYYYYY"
 ```
 
 Signature verification is skipped only when `WHATSAPP_APP_SECRET` is empty
@@ -101,10 +102,10 @@ Signature verification is skipped only when `WHATSAPP_APP_SECRET` is empty
 
 1. Create a Meta app with the WhatsApp product and a business phone number.
 2. In Commerce Manager, connect a catalog to the WhatsApp Business Account
-   and add products. The live Meta catalog is the source of truth for price,
-   availability, and inventory when an order is submitted. The **product
-   retailer ID** in Meta must equal `products.whatsappProductId` in this
-   database so the completed order can retain its local product relationship.
+   and add products. Orders validate price, availability, and inventory from
+   the synchronized `catalogProduct` table, so the **product retailer ID** in
+   Meta must equal `catalogProduct.retailerId`. Refresh it with the controlled
+   `catalog:pull` schedule below rather than fetching Meta during a webhook.
 3. Configure the webhook URL as
    `https://<public-host>/api/v1/whatsapp/webhook`, using
    `WHATSAPP_VERIFY_TOKEN`, and subscribe to `messages` plus any other fields
@@ -178,6 +179,15 @@ If the template send fails, the backend falls back to the plain-text greeting.
 
 `scripts/catalog-sync.mjs` uses the Meta Business SDK to read and write the
 product catalog.
+
+Run `npm run catalog:pull` from a scheduled job (for example every 5–15
+minutes, depending on how quickly stock changes). The webhook never performs
+this remote catalog request, keeping order acknowledgement latency predictable.
+
+Webhook read receipts, inbound-media transfers, and team alerts are persisted
+to `whatsappOutbox`. The API starts its outbox worker on boot; keep this
+process and PostgreSQL in the same production region. The worker retries
+transient failures with exponential backoff and resumes abandoned leases.
 
 The access token needs the `catalog_management` scope in addition to the
 WhatsApp scopes. Grant it to the system user in Meta Business Settings, then

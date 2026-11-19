@@ -17,6 +17,7 @@ import reviewRouter from "./routes/review/review.routes.js";
 import whatsappRouter from "./routes/whatsapp/whatsapp.routes.js";
 import orderRouter from "./routes/order/order.routes.js";
 import chatRouter from "./routes/chat/chat.routes.js";
+import { startWhatsAppOutboxWorker } from "./services/whatsapp/outbox.service.js";
 
 
 
@@ -56,4 +57,5 @@ app.use(errorHandler);
 
 app.listen(process.env.PORT || 3000,()=>{
     logger.info({ port: process.env.PORT || 3000 }, "Server started");
+    startWhatsAppOutboxWorker();
 })

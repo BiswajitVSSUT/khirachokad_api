@@ -1,5 +1,6 @@
 import { AppError } from "../../utils/AppError.js";
 import { prisma } from "../../config/prisma.js";
+import { logger } from "../../config/logger.js";
 
 const DEFAULT_GRAPH_VERSION = "v23.0";
 
@@ -24,13 +25,38 @@ function normalizeNumber(number: string): string {
   return number.replace(/[^\d]/g, "");
 }
 
+const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_REQUEST_TIMEOUT_MS ?? 10_000);
+
+async function graphFetch(url: string | URL, init: RequestInit, retrySafe = false): Promise<Response> {
+  const attempts = retrySafe ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const started = performance.now();
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      logger.info({ operation: "meta_request", method: init.method ?? "GET", status: response.status, durationMs: Math.round(performance.now() - started) }, "Meta request completed");
+      if (!retrySafe || response.ok || ![408, 429, 500, 502, 503, 504].includes(response.status) || attempt === attempts - 1) return response;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    } catch (error) {
+      lastError = error;
+      if (!retrySafe || attempt === attempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw lastError;
+}
+
 async function postMessage(payload: Record<string, unknown>): Promise<unknown> {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!token) {
     throw new AppError("WHATSAPP_ACCESS_TOKEN is not configured", 500);
   }
 
-  const response = await fetch(getGraphUrl(), {
+  const response = await graphFetch(getGraphUrl(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -109,9 +135,9 @@ export async function getCatalogProducts(
   const products: CatalogProduct[] = [];
 
   while (nextUrl) {
-    const response = await fetch(nextUrl, {
+    const response = await graphFetch(nextUrl, {
       headers: { Authorization: `Bearer ${token}` },
-    });
+    }, true);
 
     if (!response.ok) {
       throw new AppError(
@@ -284,11 +310,11 @@ export async function downloadWhatsAppMedia(mediaId: string): Promise<{ base64: 
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!token) throw new AppError("WHATSAPP_ACCESS_TOKEN is not configured", 500);
   const version = process.env.WHATSAPP_API_VERSION || DEFAULT_GRAPH_VERSION;
-  const metadataResponse = await fetch("https://graph.facebook.com/" + version + "/" + encodeURIComponent(mediaId), { headers: { Authorization: "Bearer " + token } });
+  const metadataResponse = await graphFetch("https://graph.facebook.com/" + version + "/" + encodeURIComponent(mediaId), { headers: { Authorization: "Bearer " + token } }, true);
   if (!metadataResponse.ok) throw new AppError("WhatsApp media metadata error (" + metadataResponse.status + ")", 502);
   const metadata = (await metadataResponse.json()) as { url?: string; mime_type?: string; filename?: string };
   if (!metadata.url) throw new AppError("WhatsApp media URL was not returned", 502);
-  const fileResponse = await fetch(metadata.url, { headers: { Authorization: "Bearer " + token } });
+  const fileResponse = await graphFetch(metadata.url, { headers: { Authorization: "Bearer " + token } }, true);
   if (!fileResponse.ok) throw new AppError("WhatsApp media download error (" + fileResponse.status + ")", 502);
   const bytes = Buffer.from(await fileResponse.arrayBuffer());
   return { base64: bytes.toString("base64"), mimeType: metadata.mime_type || "application/octet-stream", ...(metadata.filename ? { filename: metadata.filename } : {}) };
@@ -368,9 +394,25 @@ export async function markMessageRead(messageId: string): Promise<void> {
   });
 }
 
-/** Sends an internal alert to the team number (silently skipped if unset). */
+/**
+ * Sends an internal alert to each configured team number (silently skipped if
+ * unset). TEAM_WHATSAPP_NUMBER accepts a comma-separated list of numbers.
+ */
+export function getTeamWhatsAppNumbers(): string[] {
+  return [...new Set((process.env.TEAM_WHATSAPP_NUMBER ?? "")
+    .split(",")
+    .map((number) => number.trim())
+    .map(normalizeNumber)
+    .filter(Boolean))];
+}
+
+export async function sendTeamAlertTo(number: string, body: string): Promise<void> {
+  await sendText(number, body);
+}
+
 export async function sendTeamAlert(body: string): Promise<void> {
-  const teamNumber = process.env.TEAM_WHATSAPP_NUMBER;
-  if (!teamNumber) return;
-  await sendText(teamNumber, body);
+  const teamNumbers = getTeamWhatsAppNumbers();
+
+  if (teamNumbers.length === 0) return;
+  await Promise.all(teamNumbers.map((number) => sendTeamAlertTo(number, body)));
 }

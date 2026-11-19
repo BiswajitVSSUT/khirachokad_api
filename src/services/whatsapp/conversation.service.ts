@@ -22,7 +22,6 @@ import {
   cancelAwaitingAddressOrder,
   createOrderFromCatalog,
   createOrderFromFlow,
-  notifyTeamNewOrder,
   saveDeliveryAddress,
   type CatalogOrderInput,
 } from "./order.service.js";
@@ -250,8 +249,6 @@ export async function handleIncomingMessage(input: {
         await sendText(customer.whatsappNumber, FALLBACK_MESSAGE);
         return;
       }
-
-      await notifyTeamNewOrder(order, customer.whatsappNumber);
 
       try {
         await sendText(customer.whatsappNumber, ADDRESS_SAVED);

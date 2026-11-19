@@ -8,8 +8,7 @@ import {
   type InboundMessage,
 } from "./conversation.service.js";
 import type { CatalogOrderInput } from "./order.service.js";
-import { downloadWhatsAppMedia, markMessageRead } from "./whatsapp.service.js";
-import { uploadChatImage } from "../media/cloudinary.service.js";
+import { enqueueOutbox, OUTBOX } from "./outbox.service.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -147,6 +146,8 @@ export async function processWhatsAppWebhook(
 ): Promise<void> {
   if (body.object !== "whatsapp_business_account") return;
 
+  const started = performance.now();
+
   let firstError: unknown;
 
   for (const entry of body.entry ?? []) {
@@ -169,6 +170,7 @@ export async function processWhatsAppWebhook(
     }
   }
 
+  logger.info({ durationMs: Math.round(performance.now() - started) }, "WhatsApp webhook processing completed");
   if (firstError) throw firstError;
 }
 
@@ -258,11 +260,12 @@ async function handleMessages(ctx: ChangeContext): Promise<void> {
     if (!isNew) continue;
 
     try {
-      await upsertInboundMessage({ messageId, from, type, message });
-
-      await markMessageRead(messageId).catch((error) => {
-        logger.error({ err: error, messageId }, "Failed to mark WhatsApp message as read");
+      const databaseStarted = performance.now();
+      await prisma.$transaction(async (tx) => {
+        await upsertInboundMessage({ messageId, from, type, message }, tx);
+        await enqueueOutbox(tx, OUTBOX.MARK_READ, { messageId });
       });
+      logger.info({ messageId, durationMs: Math.round(performance.now() - databaseStarted) }, "Webhook database work completed");
 
       const inbound: InboundMessage = { id: messageId, type };
       const textBody = asString(asRecord(message.text)?.body);
@@ -325,8 +328,8 @@ async function upsertInboundMessage(input: {
   from: string;
   type: string;
   message: JsonObject;
-}): Promise<void> {
-  const customer = await prisma.customer.findUnique({
+}, tx: Prisma.TransactionClient): Promise<void> {
+  const customer = await tx.customer.findUnique({
     where: { whatsappNumber: input.from },
     select: { id: true },
   });
@@ -339,17 +342,11 @@ async function upsertInboundMessage(input: {
   const mediaObject = asRecord(input.message[input.type]) ?? asRecord(input.message.image) ?? asRecord(input.message.video) ?? asRecord(input.message.document) ?? asRecord(input.message.audio);
   const media = asString(mediaObject?.id);
   const caption = asString(mediaObject?.caption);
-  let mediaUrl: string | null = null;
-  if (media) {
-    try {
-      const downloaded = await downloadWhatsAppMedia(media);
-      mediaUrl = await uploadChatImage(downloaded);
-    } catch (error) {
-      logger.error({ err: error, mediaId: media, messageId: input.messageId }, "Failed to download inbound WhatsApp media");
-    }
-  }
+  // Keep the Meta media id temporarily; the outbox worker downloads and
+  // uploads it after the webhook response, then replaces it with a URL.
+  const mediaUrl: string | null = media ?? null;
 
-  await prisma.whatsappMessage.upsert({
+  await tx.whatsappMessage.upsert({
     where: { waMessageId: input.messageId },
     update: {
       type: input.type,
@@ -381,6 +378,11 @@ async function upsertInboundMessage(input: {
       waTimestamp: timestamp ?? null,
     },
   });
+  if (media) {
+    await enqueueOutbox(tx, OUTBOX.TRANSFER_MEDIA, {
+      mediaId: media, waMessageId: input.messageId,
+    });
+  }
 }
 
 async function applyMessageStatus(input: {

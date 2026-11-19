@@ -10,10 +10,9 @@ import {
   type OrderSummaryItem,
 } from "./messages.js";
 import {
-  getCatalogProducts,
-  sendTeamAlert,
   sendText,
 } from "./whatsapp.service.js";
+import { enqueueTeamAlerts } from "./outbox.service.js";
 
 // Neon can take several seconds to establish a connection after an idle
 // period. Prisma's interactive-transaction default is only five seconds,
@@ -58,15 +57,10 @@ function isAvailable(availability: string): boolean {
   return !["out of stock", "discontinued"].includes(availability);
 }
 
-function parseCatalogPrice(value: string): Prisma.Decimal {
-  const match = value.replace(/,/g, "").match(/\d+(?:\.\d+)?/);
-  if (!match) throw new AppError("Invalid catalog price", 502);
-  return new Prisma.Decimal(match[0]);
-}
-
 /**
  * Creates an order from a native WhatsApp catalog submission.
- * Prices and availability come from Meta's catalog, never from the webhook payload.
+ * Prices and availability come from the synchronized local catalog, never from
+ * the webhook payload. Catalog sync is deliberately decoupled from webhooks.
  */
 export async function createOrderFromCatalog(
   customer: customer,
@@ -90,16 +84,10 @@ export async function createOrderFromCatalog(
     }
   );
 
-  const catalogProducts = await getCatalogProducts(
-    parsed.map((item) => item.retailerId)
-  );
-  const catalogProductsByRetailerId = new Map(
-    catalogProducts.map((product) => [product.retailerId, product])
-  );
-
   const products = await prisma.catalogProduct.findMany({
     where: {
       retailerId: { in: parsed.map((item) => item.retailerId) },
+      isActive: true,
     },
   });
   const productsByRetailerId = new Map(
@@ -117,29 +105,18 @@ export async function createOrderFromCatalog(
 
   for (const item of parsed) {
     const product = productsByRetailerId.get(item.retailerId);
-    const catalogProduct = catalogProductsByRetailerId.get(item.retailerId);
-
-    if (!catalogProduct || !isAvailable(catalogProduct.availability)) {
+    if (!product || !isAvailable(product.availability)) {
       throw new AppError("Product unavailable", 409);
     }
 
     if (
-      catalogProduct.inventory !== null &&
-      catalogProduct.inventory < item.quantity
+      product.inventory !== null &&
+      product.inventory < item.quantity
     ) {
-      throw new AppError(`Insufficient stock for ${catalogProduct.name}`, 409);
+      throw new AppError(`Insufficient stock for ${product.name}`, 409);
     }
 
-    if (!product) {
-      throw new AppError("Product is not configured for order storage", 500);
-    }
-
-    let unitPrice: Prisma.Decimal;
-    try {
-      unitPrice = parseCatalogPrice(catalogProduct.price);
-    } catch {
-      throw new AppError(`Invalid catalog price for ${catalogProduct.name}`, 502);
-    }
+    const unitPrice = product.price;
 
     if (unitPrice.isNegative()) {
       throw new AppError(`Invalid price for ${product.name}`, 500);
@@ -150,7 +127,7 @@ export async function createOrderFromCatalog(
 
     orderItems.push({
       catalogProductId: product.id,
-      productName: catalogProduct.name,
+      productName: product.name,
       quantity: item.quantity,
       unitPrice,
       lineTotal,
@@ -317,10 +294,23 @@ export async function saveDeliveryAddress(
       data: { botBlacklist: true },
     });
 
-    return tx.order.findUnique({
+    const order = await tx.order.findUnique({
       where: { id: orderId },
       include: { items: true },
     });
+    if (order) {
+      const customer = await tx.customer.findUniqueOrThrow({
+        where: { id: customerId }, select: { whatsappNumber: true },
+      });
+      await enqueueTeamAlerts(tx, teamOrderAlertMessage({
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerPhone: customer.whatsappNumber,
+          address: order.deliveryAddress ?? "-",
+          items: toSummaryItems(order.items),
+        }), 30_000);
+    }
+    return order;
   }, ORDER_TRANSACTION_OPTIONS);
 }
 
@@ -355,17 +345,9 @@ export async function notifyTeamNewOrder(
   },
   customerPhone: string
 ): Promise<void> {
-  try {
-    await sendTeamAlert(
-      teamOrderAlertMessage({
-        orderNumber: order.orderNumber,
-        customerName: order.customerName,
-        customerPhone,
-        address: order.deliveryAddress ?? "-",
-        items: toSummaryItems(order.items),
-      })
-    );
-  } catch (error) {
-    logger.error({ err: error, orderNumber: order.orderNumber }, "Failed to notify team");
-  }
+  // Kept for compatibility with callers outside the webhook flow. Webhooks
+  // enqueue the alert in saveDeliveryAddress's transaction instead.
+  await prisma.$transaction((tx) => enqueueTeamAlerts(tx,
+    teamOrderAlertMessage({ orderNumber: order.orderNumber, customerName: order.customerName, customerPhone, address: order.deliveryAddress ?? "-", items: toSummaryItems(order.items) })
+  ));
 }
